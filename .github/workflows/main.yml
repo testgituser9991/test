@@ -1,18 +1,20 @@
 name: Matrix Aut44
 
 on:
-  workflow_dispatch: # التشغيل اليدوي لأول مرة فقط
+  workflow_dispatch:
+  schedule:
+    - cron: '*/10 * * * *'
 
-# ضمان تشغيل دورة واحدة فقط في أي وقت منعاً للتداخل
+# جعل الدورة الجديدة تنتظر في الطابور بدلاً من إلغاء الدورة الحالية
 concurrency:
   group: matrix-pool-aut44
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   launch-workers:
     name: "Agent-${{ matrix.node_index }}"
     runs-on: windows-2022
-    timeout-minutes: 17 # مهلة أمان أعلى من 15 دقيقة بقليل
+    timeout-minutes: 22
 
     strategy:
       fail-fast: false
@@ -51,35 +53,19 @@ jobs:
           }
           $WorkerProc = Start-Process @ProcessParams
           
-          Write-Output ">>> Supervisor online. Enforcing maximum runtime: 15 minutes."
+          Write-Output ">>> Supervisor online. Enforcing maximum runtime: 20 minutes."
           
           try {
-              # 900 ثانية = 15 دقيقة بالضبط
-              Wait-Process -InputObject $WorkerProc -Timeout 900 -ErrorAction Stop
+              # 1200 ثانية = 20 دقيقة بالضبط
+              Wait-Process -InputObject $WorkerProc -Timeout 1200 -ErrorAction Stop
               Write-Output ">>> Process finished execution within limit."
           }
           catch {
               Write-Output ">>> Execution threshold met! Killing process..."
-              Stop-Process -InputObject $WorkerProc -Force
+              Stop-Process -InputObject $WorkerProc -Force -ErrorAction SilentlyContinue
               Write-Output ">>> Process terminated successfully."
           }
 
       - name: Completion Status
         shell: bash
         run: echo "[COMPLETE] Worker-${{ matrix.node_index }} finished execution cycle."
-
-  # هذه المهمة تُستدعى تلقائياً بعد انتهاء جميع الـ 15 سيرفر لتشغيل الدورة التالية
-  trigger-next-run:
-    needs: launch-workers
-    if: always() # لضمان التشغيل حتى لو حدث خطأ في إحدى العقد
-    runs-on: ubuntu-latest
-    permissions:
-      actions: write
-    steps:
-      - name: Trigger Next Execution
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          echo ">>> 15 minutes cycle finished. Triggering next cycle automatically..."
-          gh api -X POST /repos/${{ github.repository }}/actions/workflows/${{ github.workflow }}/dispatches \
-            -f ref="${{ github.ref }}"
